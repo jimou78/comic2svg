@@ -1,0 +1,74 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "comic2svg"
+version = "0.1.0"
+description = "High-fidelity vectorizer (SVG) and preprocessing pipeline for vintage comics, picture books, and scanned line art."
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "MIT" }
+authors = [
+    { name = "comic2svg maintainers" }
+]
+keywords = [
+    "comic",
+    "manga",
+    "svg",
+    "vectorizer",
+    "pdf",
+    "image-processing",
+    "vintage-comics",
+    "digitization",
+    "vtracer"
+]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "Intended Audience :: End Users/Desktop",
+    "Topic :: Multimedia :: Graphics",
+    "Topic :: Multimedia :: Graphics :: Graphics Conversion",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent"
+]
+
+dependencies = [
+    "pymupdf>=1.23.0",
+    "opencv-python-headless>=4.8.0",
+    "vtracer>=0.6.0",
+    "typer>=0.9.0",
+    "rich>=13.0.0",
+    "numpy>=1.22.0"
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.4.0",
+    "ruff>=0.1.0"
+]
+
+[project.urls]
+Homepage = "https://github.com/jimou78/comic2svg"
+Repository = "https://github.com/jimou78/comic2svg"
+Issues = "https://github.com/jimou78/comic2svg/issues"
+
+[project.scripts]
+comic2svg = "comic2svg.cli:app"
+
+[tool.ruff]
+line-length = 100
+target-version = "py310"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "W"]
+ignore = ["E501"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py"]
