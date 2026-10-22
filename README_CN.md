@@ -85,8 +85,29 @@ comic2svg webui
 # 批量优化整个目录的 SVG 文件
 comic2svg optimize ./svg_pages/ --precision 2
 
-# 优化单个文件
-comic2svg optimize raw.svg -o optimized.svg
+### 5. 一键生成单文件 HTML5 矢量翻页阅读器 (`comic2svg flipbook`)
+
+将转换出来的整部漫画打包为一个独立离线的 HTML5 翻页阅读器，支持键盘翻页、全屏模式与无损缩放：
+
+```bash
+# 转换时直接附带生成阅读器
+comic2svg convert 老连环画.pdf --flipbook --out ./dist/
+
+# 或将已有 SVG 目录打包为单文件翻页器
+comic2svg flipbook ./svg_pages/ -o 连环画阅读器.html --title "三国演义连环画"
+```
+
+### 6. 高阶数字化预处理选项
+
+```bash
+# 智能拆分跨页中缝扫描（自动将 2 页拆分为 2 张独立页面）
+comic2svg convert 跨页扫描.pdf --split-pages --out ./pages/
+
+# 自动裁切去除扫描仪四周黑边与盖板阴影
+comic2svg convert 扫描件.pdf --crop-borders --out ./cleaned/
+
+# 消除历史印刷半色调网点（去网纹）
+comic2svg convert 报纸漫画.pdf --descreen --out ./smooth/
 ```
 
 ---
@@ -136,6 +157,7 @@ for path in generated_svgs:
 - [x] **v0.1.0**: 核心自适应二值化、PDF 批量提取、VTracer 矢量化引擎、预设系统与多核并行处理。
 - [x] **v0.1.1**: 两步走高清超分重构管线（Lanczos-4 超分、平场去黄校正、反锐化边缘增强、微断笔重连）。
 - [x] **v0.1.2**: 内置交互式可视化调参工坊 (`comic2svg webui`) 与独立 SVG 瘦身压缩器 (`comic2svg optimize`)。
+- [x] **v0.1.3**: 高阶数字化套件：自动双页中缝切分、扫描黑边智能裁切、印刷半色调消网纹、自适应小开本 DPI、单文件 HTML5 矢量翻页阅读器。
 - [ ] **v0.2.0**: 可插拔**智能上色管线 (Colorization Pipeline)**：
   - 基于连通区域与调色板的规则填色。
   - 支持可选的本地 ControlNet 线稿上色插件 (`pip install comic2svg[ai]`)。

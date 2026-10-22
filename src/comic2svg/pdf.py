@@ -6,11 +6,17 @@ images ready for preprocessing, HD enhancement, and vectorization.
 
 from pathlib import Path
 from typing import Generator, List, Optional, Union
+import numpy as np
 
 try:
     import fitz  # PyMuPDF
 except ImportError:
     fitz = None
+
+try:
+    import cv2
+except ImportError:
+    cv2 = None
 
 
 def parse_page_range(page_spec: Optional[str], total_pages: int) -> List[int]:
@@ -37,12 +43,35 @@ def parse_page_range(page_spec: Optional[str], total_pages: int) -> List[int]:
     return sorted(list(pages))
 
 
+def calculate_adaptive_dpi(page, target_min_dimension: int = 2400, default_dpi: int = 300) -> int:
+    """Calculate adaptive DPI based on physical page dimensions.
+
+    Vintage picture books (小人书 / 64开本) have small physical dimensions.
+    Standard 300 DPI might result in sub-optimal raster pixel density.
+    This dynamically calculates the ideal DPI (300 to 600) to guarantee
+    at least `target_min_dimension` pixels along the primary axis.
+    """
+    rect = page.rect
+    max_pts = max(rect.width, rect.height)
+    if max_pts <= 0:
+        return default_dpi
+
+    # pts to inches (72 pts per inch)
+    dimension_inches = max_pts / 72.0
+    computed_dpi = int(target_min_dimension / dimension_inches)
+    # Clamp between 300 and 600 DPI
+    return max(default_dpi, min(600, computed_dpi))
+
+
 def render_pdf_pages(
     pdf_path: Union[str, Path],
     output_dir: Union[str, Path],
     dpi: int = 300,
+    adaptive_dpi: bool = True,
     page_range: Optional[str] = None,
     extract_raw_images: bool = False,
+    split_double_pages: bool = False,
+    split_direction: str = "ltr",
 ) -> Generator[Path, None, None]:
     """Render or extract pages of a PDF to PNG images at specified DPI.
 
@@ -53,12 +82,17 @@ def render_pdf_pages(
     output_dir : Union[str, Path]
         Directory where page PNG files will be saved.
     dpi : int
-        Target rendering DPI (300 standard, 400-600 for retina/HD).
+        Base rendering DPI (default 300).
+    adaptive_dpi : bool
+        Whether to automatically scale up DPI for small pocket book formats.
     page_range : Optional[str]
         Optional page filter (e.g. '1-10', '1,3,5').
     extract_raw_images : bool
-        If True, attempts to extract original raw scanned pixmaps directly
-        to avoid any resampling compression loss.
+        Attempts to extract original raw scanned pixmaps directly.
+    split_double_pages : bool
+        Detects wide landscape 2-page scans and splits them at the binding gutter.
+    split_direction : str
+        'ltr' for left-to-right (comics), 'rtl' for right-to-left (manga).
 
     Yields
     ------
@@ -84,15 +118,17 @@ def render_pdf_pages(
 
         for page_idx in selected_pages:
             page = doc[page_idx]
+
+            # Calculate adaptive DPI
+            render_dpi = calculate_adaptive_dpi(page, default_dpi=dpi) if adaptive_dpi else dpi
+
+            extracted = False
             page_name = f"page_{page_idx + 1:04d}.png"
             page_path = out_directory / page_name
 
-            extracted = False
             if extract_raw_images:
-                # Check for raw embedded image
                 image_list = page.get_images(full=True)
                 if image_list:
-                    # Extract the primary full-page scan
                     xref = image_list[0][0]
                     base_img = doc.extract_image(xref)
                     if base_img and "image" in base_img:
@@ -101,11 +137,25 @@ def render_pdf_pages(
                         extracted = True
 
             if not extracted:
-                # Render page at desired target DPI
-                zoom = max(1.0, dpi / 72.0)
+                zoom = max(1.0, render_dpi / 72.0)
                 mat = fitz.Matrix(zoom, zoom)
                 pix = page.get_pixmap(matrix=mat, alpha=False)
                 pix.save(str(page_path))
+
+            # Check if double page split is requested
+            if split_double_pages and cv2 is not None:
+                from .preprocess import split_double_pages as split_fn, read_image, write_image
+                img = read_image(page_path, grayscale=False)
+                pages = split_fn(img, direction=split_direction)
+                if len(pages) > 1:
+                    # Remove original wide image and save split sub-pages
+                    page_path.unlink()
+                    for sub_idx, sub_img in enumerate(pages, start=1):
+                        sub_name = f"page_{page_idx + 1:04d}_{chr(96 + sub_idx)}.png"
+                        sub_path = out_directory / sub_name
+                        write_image(sub_path, sub_img)
+                        yield sub_path
+                    continue
 
             yield page_path
     finally:

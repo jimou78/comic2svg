@@ -5,13 +5,13 @@ real-time parameter tuning, and one-click SVG/HD-PNG export. Zero extra
 framework dependencies required.
 """
 
-import cgi
 import http.server
 import json
 import os
 from pathlib import Path
+import re
 import tempfile
-from typing import Optional
+from typing import Dict, List, Optional
 import urllib.parse
 import webbrowser
 
@@ -22,6 +22,41 @@ from .presets import get_preset
 from .vectorize import vectorize_image
 
 STATIC_DIR = Path(__file__).parent / "web"
+
+
+def parse_multipart_form(body_bytes: bytes, boundary: str) -> Dict[str, List[bytes]]:
+    """Zero-dependency multipart/form-data parser replacing deprecated cgi module.
+
+    Compatible across Python 3.10 through Python 3.14+ (PEP 594 compliance).
+    """
+    fields: Dict[str, List[bytes]] = {}
+    delimiter = b"--" + boundary.encode("utf-8")
+    parts = body_bytes.split(delimiter)
+
+    for part in parts:
+        part = part.strip()
+        if not part or part == b"--":
+            continue
+
+        if b"\r\n\r\n" in part:
+            header_data, content = part.split(b"\r\n\r\n", 1)
+        elif b"\n\n" in part:
+            header_data, content = part.split(b"\n\n", 1)
+        else:
+            continue
+
+        if content.endswith(b"\r\n"):
+            content = content[:-2]
+        elif content.endswith(b"\n"):
+            content = content[:-1]
+
+        header_str = header_data.decode("utf-8", errors="ignore")
+        name_match = re.search(r'name=["\']([^"\']+)["\']', header_str)
+        if name_match:
+            name = name_match.group(1)
+            fields.setdefault(name, []).append(content)
+
+    return fields
 
 
 class StudioRequestHandler(http.server.SimpleHTTPRequestHandler):
@@ -40,7 +75,6 @@ class StudioRequestHandler(http.server.SimpleHTTPRequestHandler):
             self.wfile.write(html_file.read_bytes())
             return
         elif parsed.path.startswith("/temp/"):
-            # Serve temporary image file
             filename = os.path.basename(parsed.path)
             tmp_path = Path(tempfile.gettempdir()) / "comic2svg_web" / filename
             if tmp_path.exists():
@@ -76,14 +110,22 @@ class StudioRequestHandler(http.server.SimpleHTTPRequestHandler):
         self.wfile.write(json.dumps(data).encode("utf-8"))
 
     def _handle_process_api(self):
-        # Parse multipart form data
-        ctype, pdict = cgi.parse_header(self.headers.get("content-type"))
-        if ctype != "multipart/form-data":
+        content_type = self.headers.get("content-type", "")
+        if "multipart/form-data" not in content_type:
             self._send_json({"success": False, "error": "Expected multipart/form-data"}, status=400)
             return
 
-        pdict["boundary"] = bytes(pdict["boundary"], "utf-8")
-        fields = cgi.parse_multipart(self.rfile, pdict)
+        # Extract boundary
+        boundary_match = re.search(r'boundary=([^;]+)', content_type)
+        if not boundary_match:
+            self._send_json({"success": False, "error": "No boundary in Content-Type"}, status=400)
+            return
+
+        boundary = boundary_match.group(1).strip().strip('"')
+        content_length = int(self.headers.get("Content-Length", 0))
+        body_bytes = self.rfile.read(content_length)
+
+        fields = parse_multipart_form(body_bytes, boundary)
 
         file_data_list = fields.get("file")
         if not file_data_list or len(file_data_list) == 0:
@@ -91,15 +133,14 @@ class StudioRequestHandler(http.server.SimpleHTTPRequestHandler):
             return
 
         file_bytes = file_data_list[0]
-        preset_name = fields.get("preset", ["vintage-comic"])[0]
-        scale = float(fields.get("scale", [2.0])[0])
-        flat_field = fields.get("flat_field", ["true"])[0].lower() == "true"
-        sharpen = fields.get("sharpen", ["true"])[0].lower() == "true"
-        reconnect = fields.get("reconnect", ["true"])[0].lower() == "true"
-        optimize = fields.get("optimize", ["true"])[0].lower() == "true"
-        precision = int(fields.get("precision", [2])[0])
+        preset_name = fields.get("preset", [b"vintage-comic"])[0].decode("utf-8", errors="ignore")
+        scale = float(fields.get("scale", [b"2.0"])[0].decode("utf-8", errors="ignore"))
+        flat_field = fields.get("flat_field", [b"true"])[0].decode("utf-8", errors="ignore").lower() == "true"
+        sharpen = fields.get("sharpen", [b"true"])[0].decode("utf-8", errors="ignore").lower() == "true"
+        reconnect = fields.get("reconnect", [b"true"])[0].decode("utf-8", errors="ignore").lower() == "true"
+        optimize = fields.get("optimize", [b"true"])[0].decode("utf-8", errors="ignore").lower() == "true"
+        precision = int(fields.get("precision", [b"2"])[0].decode("utf-8", errors="ignore"))
 
-        # Prepare temporary workspace
         tmp_dir = Path(tempfile.gettempdir()) / "comic2svg_web"
         tmp_dir.mkdir(parents=True, exist_ok=True)
 

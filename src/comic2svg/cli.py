@@ -10,6 +10,7 @@ from rich.table import Table
 
 from . import __version__
 from .core import convert_batch, convert_file, convert_to_hd
+from .flipbook import generate_flipbook
 from .optimizer import optimize_svg
 from .presets import list_presets
 from .webui import run_webui
@@ -47,6 +48,37 @@ def webui_cmd(
     run_webui(host=host, port=port, open_browser=not no_browser)
 
 
+@app.command(name="flipbook")
+def flipbook_cmd(
+    svg_dir: Path = typer.Argument(
+        ...,
+        help="Directory containing generated SVG pages.",
+        exists=True,
+    ),
+    out: Path = typer.Option(
+        Path("flipbook.html"),
+        "--out",
+        "-o",
+        help="Output HTML flipbook path.",
+    ),
+    title: str = typer.Option(
+        "Comic Book",
+        "--title",
+        "-t",
+        help="Title of the comic book reader.",
+    ),
+):
+    """Generate a standalone offline HTML5 reader embedding all comic SVGs."""
+    svgs = sorted(list(svg_dir.glob("*.svg")))
+    if not svgs:
+        console.print("[red]No SVG files found in directory.[/red]")
+        return
+    res = generate_flipbook(svgs, out, title=title)
+    console.print(
+        f"[bold green]✓ Flipbook generated successfully![/bold green] Open in any browser: [underline]{res}[/underline]"
+    )
+
+
 @app.command(name="optimize")
 def optimize_cmd(
     input_path: Path = typer.Argument(
@@ -73,7 +105,7 @@ def optimize_cmd(
     if input_path.is_file():
         svg_files = [input_path]
     elif input_path.is_dir():
-        svg_files = list(input_path.glob("*.svg"))
+        svg_files = sorted(list(input_path.glob("*.svg")))
 
     if not svg_files:
         console.print("[yellow]No SVG files found to optimize.[/yellow]")
@@ -236,12 +268,42 @@ def convert_cmd(
     dpi: int = typer.Option(
         300,
         "--dpi",
-        help="Rendering resolution (DPI) for PDF extraction.",
+        help="Base rendering resolution (DPI) for PDF extraction.",
+    ),
+    adaptive_dpi: bool = typer.Option(
+        True,
+        "--adaptive-dpi/--no-adaptive-dpi",
+        help="Dynamically scale DPI for small pocket books (小人书).",
     ),
     pages: Optional[str] = typer.Option(
         None,
         "--pages",
         help="Page range to convert for PDF files (e.g. '1-10', '1,3,5').",
+    ),
+    split_pages: bool = typer.Option(
+        False,
+        "--split-pages/--no-split-pages",
+        help="Auto-detect wide double-page scans and split them at the gutter.",
+    ),
+    split_direction: str = typer.Option(
+        "ltr",
+        "--split-direction",
+        help="Double-page order: 'ltr' (Left-to-Right, standard) or 'rtl' (Right-to-Left, manga).",
+    ),
+    crop_borders: bool = typer.Option(
+        False,
+        "--crop-borders/--no-crop-borders",
+        help="Automatically crop away black scanner cover margins and shadows.",
+    ),
+    descreen: bool = typer.Option(
+        False,
+        "--descreen/--no-descreen",
+        help="Remove printing halftone dot screens (半色调网点).",
+    ),
+    flipbook: bool = typer.Option(
+        False,
+        "--flipbook/--no-flipbook",
+        help="Automatically generate a standalone offline HTML5 flipbook reader.",
     ),
     hd: bool = typer.Option(
         False,
@@ -286,8 +348,14 @@ def convert_cmd(
     console.print(f"[dim]Preset:[/dim] [green]{preset}[/green]")
     if hd:
         console.print(f"[dim]HD Pre-enhancement:[/dim] [green]Enabled ({scale}x)[/green]")
-    if optimize:
-        console.print(f"[dim]SVG Minification:[/dim] [green]Enabled (precision={precision})[/green]")
+    if split_pages:
+        console.print(f"[dim]Double-page split:[/dim] [green]Enabled ({split_direction.upper()})[/green]")
+    if crop_borders:
+        console.print(f"[dim]Scanner margin cropping:[/dim] [green]Enabled[/green]")
+    if descreen:
+        console.print(f"[dim]Halftone descreening:[/dim] [green]Enabled[/green]")
+    if flipbook:
+        console.print(f"[dim]HTML5 Flipbook Reader:[/dim] [green]Enabled[/green]")
 
     out.mkdir(parents=True, exist_ok=True)
 
@@ -330,7 +398,13 @@ def convert_cmd(
                 out,
                 preset=preset,
                 dpi=dpi,
+                adaptive_dpi=adaptive_dpi,
                 page_range=pages,
+                split_pages=split_pages,
+                split_direction=split_direction,
+                crop_borders=crop_borders,
+                descreen=descreen,
+                flipbook=flipbook,
                 workers=workers,
                 keep_intermediate=keep_intermediate,
                 use_hd=hd,

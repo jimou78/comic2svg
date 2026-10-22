@@ -15,6 +15,7 @@ from .preprocess import clean_image
 from .enhance import enhance_to_hd
 from .vectorize import vectorize_image
 from .optimizer import optimize_svg
+from .flipbook import generate_flipbook
 
 IMAGE_EXTENSIONS = {".png", ".jpg", ".jpeg", ".webp", ".bmp", ".tif", ".tiff"}
 
@@ -28,6 +29,8 @@ def _process_single_page(
     hd_scale: float = 2.0,
     optimize: bool = True,
     precision: int = 2,
+    crop_borders: bool = False,
+    descreen: bool = False,
 ) -> Tuple[str, bool, str]:
     """Worker function for parallel page processing."""
     try:
@@ -53,7 +56,13 @@ def _process_single_page(
 
         # 2. Clean and binarize
         clean_p = working_img.with_suffix(".clean.png")
-        clean_image(working_img, clean_p, preset=preset)
+        clean_image(
+            working_img,
+            clean_p,
+            preset=preset,
+            crop_borders=crop_borders,
+            descreen=descreen,
+        )
 
         # 3. Vectorize
         vectorize_image(clean_p, svg_p, preset=preset)
@@ -224,7 +233,13 @@ def convert_file(
     output_dir: Union[str, Path],
     preset: Optional[Union[str, PresetConfig]] = None,
     dpi: int = 300,
+    adaptive_dpi: bool = True,
     page_range: Optional[str] = None,
+    split_pages: bool = False,
+    split_direction: str = "ltr",
+    crop_borders: bool = False,
+    descreen: bool = False,
+    flipbook: bool = False,
     workers: Optional[int] = None,
     keep_intermediate: bool = False,
     use_hd: bool = False,
@@ -253,7 +268,15 @@ def convert_file(
         temp_pages_dir.mkdir(parents=True, exist_ok=True)
 
         pages = list(
-            render_pdf_pages(in_file, temp_pages_dir, dpi=dpi, page_range=page_range)
+            render_pdf_pages(
+                in_file,
+                temp_pages_dir,
+                dpi=dpi,
+                adaptive_dpi=adaptive_dpi,
+                page_range=page_range,
+                split_double_pages=split_pages,
+                split_direction=split_direction,
+            )
         )
         task_list = [
             (str(p), str(out_dir / f"{in_file.stem}_{p.stem}.svg"))
@@ -267,7 +290,7 @@ def convert_file(
             f"Unsupported file format '{in_file.suffix}'. Supported: PDF, {', '.join(sorted(IMAGE_EXTENSIONS))}"
         )
 
-    return _run_parallel_tasks(
+    results = _run_parallel_tasks(
         task_list,
         preset_cfg.name,
         workers=workers,
@@ -276,8 +299,16 @@ def convert_file(
         hd_scale=hd_scale,
         optimize=optimize,
         precision=precision,
+        crop_borders=crop_borders,
+        descreen=descreen,
         progress_callback=progress_callback,
     )
+
+    if flipbook and results:
+        flipbook_path = out_dir / f"{in_file.stem}_flipbook.html"
+        generate_flipbook(results, flipbook_path, title=in_file.stem)
+
+    return results
 
 
 def convert_batch(
@@ -346,6 +377,8 @@ def _run_parallel_tasks(
     hd_scale: float = 2.0,
     optimize: bool = True,
     precision: int = 2,
+    crop_borders: bool = False,
+    descreen: bool = False,
     progress_callback: Optional[Callable[[int, int, str], None]] = None,
 ) -> List[Path]:
     total = len(tasks)
@@ -359,7 +392,16 @@ def _run_parallel_tasks(
     if num_workers <= 1 or total == 1:
         for in_str, out_str in tasks:
             res_path, ok, err = _process_single_page(
-                in_str, out_str, preset_name, keep_intermediate, use_hd, hd_scale, optimize, precision
+                in_str,
+                out_str,
+                preset_name,
+                keep_intermediate,
+                use_hd,
+                hd_scale,
+                optimize,
+                precision,
+                crop_borders=crop_borders,
+                descreen=descreen,
             )
             completed += 1
             if ok:
@@ -382,6 +424,8 @@ def _run_parallel_tasks(
                 hd_scale,
                 optimize,
                 precision,
+                crop_borders=crop_borders,
+                descreen=descreen,
             ): in_str
             for in_str, out_str in tasks
         }

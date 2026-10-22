@@ -93,8 +93,29 @@ Minify and compress SVG files by rounding bezier coordinates and stripping metad
 # Minify an entire directory of SVGs in-place
 comic2svg optimize ./svg_pages/ --precision 2
 
-# Minify a single SVG to a new destination
-comic2svg optimize raw_comic.svg -o optimized_comic.svg
+### 5. Generate Standalone HTML5 Flipbook (`comic2svg flipbook`)
+
+Package all generated SVG pages into a self-contained, offline HTML5 flipbook reader with keyboard navigation, full-screen mode, and infinite zooming:
+
+```bash
+# Generate flipbook directly during conversion
+comic2svg convert my_comic.pdf --flipbook --out ./dist/
+
+# Or package existing SVG files into a flipbook
+comic2svg flipbook ./svg_pages/ -o ./dist/comic_reader.html --title "Classic Romance of Three Kingdoms"
+```
+
+### 6. Advanced Digitization Flags
+
+```bash
+# Auto-split landscape double-page scans at the binding gutter
+comic2svg convert double_spread.pdf --split-pages --out ./pages/
+
+# Auto-crop black scanner margins and shadows
+comic2svg convert scan.pdf --crop-borders --out ./cleaned/
+
+# Eliminate printing halftone dot screens (半色调网点)
+comic2svg convert press_print.pdf --descreen --out ./smooth/
 ```
 
 ---
@@ -145,6 +166,7 @@ for svg_path in results:
 - [x] **v0.1.0**: Core adaptive binarization, PDF batch rendering, VTracer engine integration, preset system, parallel execution.
 - [x] **v0.1.1**: Two-step HD super-resolution line restoration pipeline (Lanczos-4, flat-field illumination, unsharp mask sharpening, micro-break reconnection).
 - [x] **v0.1.2**: Built-in interactive Web Studio (`comic2svg webui`) with split-view curtain slider & standalone SVG minification optimizer (`comic2svg optimize`).
+- [x] **v0.1.3**: Advanced digitization suite: auto double-page split, black scanner margin cropping, halftone descreening, adaptive DPI, and standalone HTML5 vector flipbook generator.
 - [ ] **v0.2.0**: Pluggable **Colorization Pipeline**:
   - Palette-based flood-fill color segmentation.
   - Optional local diffusion model / ControlNet line art colorization plugin (`pip install comic2svg[ai]`).
