@@ -41,12 +41,25 @@ uv pip install comic2svg
 pip install comic2svg
 ```
 
-### 常用命令
+### 1. 两步走高清增强工作流（PDF -> PNG -> 高清超分增强）
 
-转换一本老漫画 PDF 为 SVG（默认使用小人书专用预设）：
+从 PDF 逐页提取 PNG 并进行 2x / 4x 超分辨率重建、平场去黄校正与线条锐化：
 
 ```bash
-comic2svg convert 老连环画.pdf --out ./svg_output/
+# 步骤 1 & 2: PDF -> PNG -> 2 倍高清超分线稿
+comic2svg hd 老连环画.pdf --scale 2 --out ./hd_pages/
+
+# 4 倍超清重构（开启断笔微隙重连 + 边缘反锐化遮罩）
+comic2svg hd 老连环画.pdf --scale 4 --sharpen --reconnect --out ./ultra_hd/
+```
+
+### 2. 端到端矢量化（PDF -> 高清增强 -> 纯净矢量 SVG）
+
+直接将老漫画 PDF 转为可在任意 4K/8K 屏幕无限放大的矢量 SVG：
+
+```bash
+# 开启 --hd 预增强，转出的 SVG 线条平滑度显著提升
+comic2svg convert 老连环画.pdf --hd --scale 2 --out ./svg_output/
 ```
 
 仅转换指定页码（例如第 1 到 10 页）：
@@ -55,10 +68,25 @@ comic2svg convert 老连环画.pdf --out ./svg_output/
 comic2svg convert 老连环画.pdf --pages "1-10" --out ./preview/
 ```
 
-批量转换整个图片文件夹：
+### 3. 本地可视化调参工坊 (`comic2svg webui`)
+
+启动内置的交互式浏览器 Studio，支持**左右卷帘滑块实时对比（原图 ⟷ 高清矢量）**、实时调参、一键导出：
 
 ```bash
-comic2svg convert ./scanned_pages/ --out ./svg_pages/ --workers 8
+comic2svg webui
+# 自动在浏览器打开 http://127.0.0.1:8080 (零额外 Web 框架依赖，开箱即用！)
+```
+
+### 4. 独立 SVG 无损瘦身压缩 (`comic2svg optimize`)
+
+通过精简贝塞尔曲线坐标小数位、合并同类 Path、移除冗余元数据，**使 SVG 体积直接缩减 40% ~ 60%**：
+
+```bash
+# 批量优化整个目录的 SVG 文件
+comic2svg optimize ./svg_pages/ --precision 2
+
+# 优化单个文件
+comic2svg optimize raw.svg -o optimized.svg
 ```
 
 ---
@@ -106,6 +134,8 @@ for path in generated_svgs:
 ## 🗺️ 路线图 (Roadmap)
 
 - [x] **v0.1.0**: 核心自适应二值化、PDF 批量提取、VTracer 矢量化引擎、预设系统与多核并行处理。
+- [x] **v0.1.1**: 两步走高清超分重构管线（Lanczos-4 超分、平场去黄校正、反锐化边缘增强、微断笔重连）。
+- [x] **v0.1.2**: 内置交互式可视化调参工坊 (`comic2svg webui`) 与独立 SVG 瘦身压缩器 (`comic2svg optimize`)。
 - [ ] **v0.2.0**: 可插拔**智能上色管线 (Colorization Pipeline)**：
   - 基于连通区域与调色板的规则填色。
   - 支持可选的本地 ControlNet 线稿上色插件 (`pip install comic2svg[ai]`)。

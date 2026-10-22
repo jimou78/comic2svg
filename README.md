@@ -50,12 +50,24 @@ uv pip install comic2svg
 pip install comic2svg
 ```
 
-### 1-Minute Usage
+### 1. Two-Step HD Enhancement Workflow (PDF -> PNG -> Super-Resolution HD)
 
-Convert a single comic PDF to SVG with the default vintage preset:
+Extract PDF pages to PNG and upscale to 2x / 4x HD with background flattening and line sharpening:
 
 ```bash
-comic2svg convert my_comic.pdf --out ./output_svgs/
+# Step 1 & 2: PDF -> PNG -> 2x Super-Resolution HD line art
+comic2svg hd my_comic.pdf --scale 2 --out ./hd_pages/
+
+# 4x Ultra-HD with stroke reconnection and unsharp mask sharpening
+comic2svg hd my_comic.pdf --scale 4 --sharpen --reconnect --out ./ultra_hd/
+```
+
+### 2. End-to-End Vectorization (PDF -> HD -> Clean SVG)
+
+Convert directly from PDF to clean, infinite-zoom SVG with HD pre-enhancement:
+
+```bash
+comic2svg convert my_comic.pdf --hd --scale 2 --out ./output_svgs/
 ```
 
 Convert a specific page range (e.g. pages 1 to 10):
@@ -64,10 +76,25 @@ Convert a specific page range (e.g. pages 1 to 10):
 comic2svg convert my_comic.pdf --pages "1-10" --out ./preview/
 ```
 
-Convert an entire folder of scanned page images:
+### 3. Interactive Web Studio (`comic2svg webui`)
+
+Launch the built-in browser studio with a split-screen curtain comparison slider (Before vs Enhanced Vector) and real-time parameter tuning:
 
 ```bash
-comic2svg convert ./scanned_pages/ --out ./svg_pages/ --workers 8
+comic2svg webui
+# Opens http://127.0.0.1:8080 automatically (zero extra web framework dependencies!)
+```
+
+### 4. Standalone SVG Minification & Optimization (`comic2svg optimize`)
+
+Minify and compress SVG files by rounding bezier coordinates and stripping metadata (reduces file size by 40% ~ 60% without quality loss):
+
+```bash
+# Minify an entire directory of SVGs in-place
+comic2svg optimize ./svg_pages/ --precision 2
+
+# Minify a single SVG to a new destination
+comic2svg optimize raw_comic.svg -o optimized_comic.svg
 ```
 
 ---
@@ -116,6 +143,8 @@ for svg_path in results:
 ## 🗺️ Roadmap & Ecosystem
 
 - [x] **v0.1.0**: Core adaptive binarization, PDF batch rendering, VTracer engine integration, preset system, parallel execution.
+- [x] **v0.1.1**: Two-step HD super-resolution line restoration pipeline (Lanczos-4, flat-field illumination, unsharp mask sharpening, micro-break reconnection).
+- [x] **v0.1.2**: Built-in interactive Web Studio (`comic2svg webui`) with split-view curtain slider & standalone SVG minification optimizer (`comic2svg optimize`).
 - [ ] **v0.2.0**: Pluggable **Colorization Pipeline**:
   - Palette-based flood-fill color segmentation.
   - Optional local diffusion model / ControlNet line art colorization plugin (`pip install comic2svg[ai]`).

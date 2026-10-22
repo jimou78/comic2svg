@@ -1,0 +1,282 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>comic2svg Studio - 老漫画矢量化与高清调参工坊</title>
+  <style>
+    :root {
+      --bg: #0f172a;
+      --panel: #1e293b;
+      --border: #334155;
+      --primary: #38bdf8;
+      --primary-hover: #0ea5e9;
+      --text: #f8fafc;
+      --text-muted: #94a3b8;
+      --accent: #10b981;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
+    body { background: var(--bg); color: var(--text); height: 100vh; display: flex; flex-direction: column; overflow: hidden; }
+    header { height: 56px; border-bottom: 1px solid var(--border); display: flex; align-items: center; justify-content: space-between; padding: 0 24px; background: rgba(30, 41, 59, 0.7); backdrop-filter: blur(8px); }
+    header h1 { font-size: 1.15rem; font-weight: 700; display: flex; align-items: center; gap: 8px; color: var(--primary); }
+    header .badge { font-size: 0.75rem; background: rgba(56, 189, 248, 0.15); color: var(--primary); padding: 2px 8px; border-radius: 999px; border: 1px solid rgba(56, 189, 248, 0.3); }
+    
+    .main-container { flex: 1; display: flex; overflow: hidden; }
+    .sidebar { width: 340px; background: var(--panel); border-right: 1px solid var(--border); padding: 20px; overflow-y: auto; display: flex; flex-direction: column; gap: 18px; }
+    .sidebar h2 { font-size: 0.9rem; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-muted); margin-bottom: 8px; }
+    
+    .form-group { display: flex; flex-direction: column; gap: 6px; }
+    .form-group label { font-size: 0.85rem; font-weight: 500; display: flex; justify-content: space-between; }
+    .form-group label span.val { color: var(--primary); font-family: monospace; }
+    select, input[type="range"] { width: 100%; }
+    select { background: #0f172a; border: 1px solid var(--border); color: var(--text); padding: 8px 12px; border-radius: 6px; outline: none; font-size: 0.9rem; }
+    input[type="range"] { accent-color: var(--primary); cursor: pointer; }
+    .checkbox-group { display: flex; align-items: center; gap: 8px; font-size: 0.85rem; cursor: pointer; }
+    .checkbox-group input { accent-color: var(--primary); width: 16px; height: 16px; }
+
+    .btn { background: var(--primary); color: #000; border: none; padding: 10px 16px; border-radius: 6px; font-weight: 600; font-size: 0.95rem; cursor: pointer; transition: background 0.15s; display: flex; align-items: center; justify-content: center; gap: 6px; }
+    .btn:hover { background: var(--primary-hover); }
+    .btn-secondary { background: #334155; color: var(--text); }
+    .btn-secondary:hover { background: #475569; }
+    .btn:disabled { opacity: 0.5; cursor: not-allowed; }
+
+    .viewport { flex: 1; position: relative; background: #020617; display: flex; align-items: center; justify-content: center; overflow: hidden; }
+    .drop-zone { border: 2px dashed var(--border); border-radius: 12px; padding: 48px; text-align: center; color: var(--text-muted); cursor: pointer; transition: border-color 0.2s; }
+    .drop-zone:hover { border-color: var(--primary); color: var(--primary); }
+
+    .compare-container { position: relative; width: 100%; height: 100%; overflow: hidden; display: none; user-select: none; }
+    .compare-img-layer { position: absolute; top: 0; left: 0; width: 100%; height: 100%; display: flex; align-items: center; justify-content: center; }
+    .compare-img-layer img, .compare-img-layer svg { max-width: 90%; max-height: 90%; object-fit: contain; }
+    .after-layer { position: absolute; top: 0; left: 0; width: 50%; height: 100%; overflow: hidden; background: #020617; border-right: 2px solid var(--primary); z-index: 2; }
+    .after-layer .inner { width: 100vw; height: 100%; display: flex; align-items: center; justify-content: center; position: absolute; left: 0; top: 0; }
+    .after-layer img, .after-layer svg { max-width: 90%; max-height: 90%; object-fit: contain; }
+
+    .slider-handle { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); width: 36px; height: 36px; border-radius: 50%; background: var(--primary); color: #000; display: flex; align-items: center; justify-content: center; cursor: ew-resize; z-index: 10; font-size: 14px; box-shadow: 0 0 16px rgba(56, 189, 248, 0.5); }
+    
+    .tag-before, .tag-after { position: absolute; top: 16px; padding: 4px 10px; border-radius: 4px; font-size: 0.75rem; font-weight: 600; text-transform: uppercase; z-index: 5; }
+    .tag-before { right: 16px; background: rgba(0,0,0,0.7); color: #94a3b8; border: 1px solid #334155; }
+    .tag-after { left: 16px; background: rgba(56, 189, 248, 0.2); color: var(--primary); border: 1px solid var(--primary); }
+
+    .stats-card { background: rgba(15, 23, 42, 0.6); border: 1px solid var(--border); border-radius: 6px; padding: 12px; font-size: 0.8rem; display: flex; flex-direction: column; gap: 4px; }
+    .stats-row { display: flex; justify-content: space-between; }
+    .stats-val { font-family: monospace; color: var(--accent); font-weight: 600; }
+  </style>
+</head>
+<body>
+
+  <header>
+    <h1><span>🎨 comic2svg Studio</span> <span class="badge">v0.1.2 P2 Preview</span></h1>
+    <div style="display:flex; gap: 8px;">
+      <button class="btn btn-secondary" id="btnDownloadPng" style="display:none;" onclick="downloadHD()">⬇ 下载高清 PNG</button>
+      <button class="btn" id="btnDownloadSvg" style="display:none;" onclick="downloadSVG()">⬇ 下载瘦身 SVG</button>
+    </div>
+  </header>
+
+  <div class="main-container">
+    <!-- Sidebar Controls -->
+    <div class="sidebar">
+      <div>
+        <h2>场景预设 (Presets)</h2>
+        <div class="form-group">
+          <select id="presetSelect" onchange="onPresetChange()">
+            <option value="vintage-comic" selected>老连环画 / 小人书 (vintage-comic)</option>
+            <option value="clean-line">清晰纯白线稿 (clean-line)</option>
+            <option value="woodblock">木刻版画 / 高反差 (woodblock)</option>
+            <option value="color-flat">彩色漫画平涂 (color-flat)</option>
+          </select>
+        </div>
+      </div>
+
+      <div>
+        <h2>高清修复参数 (HD Enhancement)</h2>
+        <div class="form-group">
+          <label>超分辨率倍率 (Lanczos-4) <span class="val" id="valScale">2.0x</span></label>
+          <input type="range" id="paramScale" min="1.0" max="4.0" step="0.5" value="2.0" oninput="valScale.innerText = this.value + 'x'">
+        </div>
+        <div class="form-group">
+          <label>平场背景去黄 (Flat-Field) <span class="val" id="valFlat">开启</span></label>
+          <label class="checkbox-group"><input type="checkbox" id="paramFlat" checked> 消除纸张发黄与扫描渐变</label>
+        </div>
+        <div class="form-group">
+          <label>反锐化边缘增强 (USM) <span class="val" id="valSharpen">开启</span></label>
+          <label class="checkbox-group"><input type="checkbox" id="paramSharpen" checked> 锐化发虚毛糙墨线</label>
+        </div>
+        <div class="form-group">
+          <label>微断线修复 (Stroke Reconnect) <span class="val" id="valReconnect">开启</span></label>
+          <label class="checkbox-group"><input type="checkbox" id="paramReconnect" checked> 自动闭合因纸张折损的断笔</label>
+        </div>
+      </div>
+
+      <div>
+        <h2>SVG 矢量与瘦身 (Minification)</h2>
+        <div class="form-group">
+          <label>贝塞尔坐标小数位精度 <span class="val" id="valPrec">2 位</span></label>
+          <input type="range" id="paramPrec" min="1" max="4" step="1" value="2" oninput="valPrec.innerText = this.value + ' 位'">
+        </div>
+        <div class="form-group">
+          <label class="checkbox-group"><input type="checkbox" id="paramOpt" checked> 启用 SVG 瘦身压缩 (省 40-60%)</label>
+        </div>
+      </div>
+
+      <button class="btn" id="btnProcess" onclick="processCurrentImage()" disabled>
+        <span>⚡ 开始高清修复与矢量化</span>
+      </button>
+
+      <div class="stats-card" id="statsBox" style="display:none;">
+        <div class="stats-row"><span>原图尺寸:</span> <span class="stats-val" id="statOrigDim">-</span></div>
+        <div class="stats-row"><span>原始大小:</span> <span class="stats-val" id="statOrigSize">-</span></div>
+        <div class="stats-row"><span>优化后 SVG 大小:</span> <span class="stats-val" id="statSvgSize">-</span></div>
+        <div class="stats-row"><span>瘦身体积节省:</span> <span class="stats-val" id="statSavings" style="color:var(--primary);">-</span></div>
+      </div>
+    </div>
+
+    <!-- Main Viewport -->
+    <div class="viewport" id="viewport">
+      <div class="drop-zone" id="dropZone" onclick="fileInput.click()">
+        <p style="font-size: 2rem; margin-bottom: 8px;">📂</p>
+        <p style="font-size: 1.05rem; font-weight: 600; color: var(--text);">拖入老漫画图片或 PDF 单页</p>
+        <p style="font-size: 0.85rem; margin-top: 4px;">支持 PNG, JPG, WebP, PDF</p>
+        <input type="file" id="fileInput" accept="image/*,application/pdf" style="display:none;" onchange="handleFileSelect(event)">
+      </div>
+
+      <!-- Split Curtain Comparison -->
+      <div class="compare-container" id="compareContainer">
+        <span class="tag-before">原图 (Original)</span>
+        <span class="tag-after">增强与矢量 SVG (Enhanced)</span>
+
+        <!-- Right/Before Layer -->
+        <div class="compare-img-layer">
+          <img id="imgBefore" src="" alt="Before">
+        </div>
+
+        <!-- Left/After Layer -->
+        <div class="after-layer" id="afterLayer">
+          <div class="inner" id="afterInner">
+            <img id="imgAfter" src="" alt="After">
+          </div>
+        </div>
+
+        <!-- Drag Handle -->
+        <div class="slider-handle" id="sliderHandle">⬄</div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    let currentFile = null;
+    let currentSvgData = null;
+    let currentHdPngUrl = null;
+    let isDragging = false;
+
+    const dropZone = document.getElementById('dropZone');
+    const compareContainer = document.getElementById('compareContainer');
+    const afterLayer = document.getElementById('afterLayer');
+    const sliderHandle = document.getElementById('sliderHandle');
+    const btnProcess = document.getElementById('btnProcess');
+
+    // Drag and Drop
+    dropZone.addEventListener('dragover', (e) => { e.preventDefault(); dropZone.style.borderColor = 'var(--primary)'; });
+    dropZone.addEventListener('dragleave', () => { dropZone.style.borderColor = 'var(--border)'; });
+    dropZone.addEventListener('drop', (e) => {
+      e.preventDefault();
+      if (e.dataTransfer.files.length > 0) loadFile(e.dataTransfer.files[0]);
+    });
+
+    function handleFileSelect(e) {
+      if (e.target.files.length > 0) loadFile(e.target.files[0]);
+    }
+
+    function loadFile(file) {
+      currentFile = file;
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        document.getElementById('imgBefore').src = e.target.result;
+        dropZone.style.display = 'none';
+        compareContainer.style.display = 'block';
+        btnProcess.disabled = false;
+        // Reset slider to center
+        setSliderPosition(50);
+      };
+      reader.readAsDataURL(file);
+    }
+
+    // Split slider dragging
+    compareContainer.addEventListener('mousedown', () => isDragging = true);
+    window.addEventListener('mouseup', () => isDragging = false);
+    window.addEventListener('mousemove', (e) => {
+      if (!isDragging) return;
+      const rect = compareContainer.getBoundingClientRect();
+      const x = Math.max(0, Math.min(e.clientX - rect.left, rect.width));
+      const percent = (x / rect.width) * 100;
+      setSliderPosition(percent);
+    });
+
+    function setSliderPosition(percent) {
+      afterLayer.style.width = percent + '%';
+      sliderHandle.style.left = percent + '%';
+    }
+
+    async function processCurrentImage() {
+      if (!currentFile) return;
+      btnProcess.disabled = true;
+      btnProcess.innerHTML = '<span>⏳ 正在进行高清重构与矢量化...</span>';
+
+      const formData = new FormData();
+      formData.append('file', currentFile);
+      formData.append('preset', document.getElementById('presetSelect').value);
+      formData.append('scale', document.getElementById('paramScale').value);
+      formData.append('flat_field', document.getElementById('paramFlat').checked);
+      formData.append('sharpen', document.getElementById('paramSharpen').checked);
+      formData.append('reconnect', document.getElementById('paramReconnect').checked);
+      formData.append('optimize', document.getElementById('paramOpt').checked);
+      formData.append('precision', document.getElementById('paramPrec').value);
+
+      try {
+        const resp = await fetch('/api/process', { method: 'POST', body: formData });
+        const data = await resp.json();
+
+        if (data.success) {
+          currentSvgData = data.svg_content;
+          currentHdPngUrl = data.hd_png_url;
+
+          // Display SVG in after view
+          document.getElementById('imgAfter').src = 'data:image/svg+xml;utf8,' + encodeURIComponent(currentSvgData);
+
+          // Update stats
+          document.getElementById('statsBox').style.display = 'flex';
+          document.getElementById('statOrigSize').innerText = (data.orig_bytes / 1024).toFixed(1) + ' KB';
+          document.getElementById('statSvgSize').innerText = (data.svg_bytes / 1024).toFixed(1) + ' KB';
+          document.getElementById('statSavings').innerText = (data.savings_percent).toFixed(1) + '% 压缩';
+
+          document.getElementById('btnDownloadPng').style.display = 'inline-flex';
+          document.getElementById('btnDownloadSvg').style.display = 'inline-flex';
+        } else {
+          alert('处理失败: ' + data.error);
+        }
+      } catch (err) {
+        alert('请求错误: ' + err.message);
+      } finally {
+        btnProcess.disabled = false;
+        btnProcess.innerHTML = '<span>⚡ 重新高清修复与矢量化</span>';
+      }
+    }
+
+    function downloadSVG() {
+      if (!currentSvgData) return;
+      const blob = new Blob([currentSvgData], { type: 'image/svg+xml' });
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(blob);
+      a.download = (currentFile.name.split('.')[0] || 'comic') + '_optimized.svg';
+      a.click();
+    }
+
+    function downloadHD() {
+      if (!currentHdPngUrl) return;
+      const a = document.createElement('a');
+      a.href = currentHdPngUrl;
+      a.download = (currentFile.name.split('.')[0] || 'comic') + '_hd.png';
+      a.click();
+    }
+  </script>
+</body>
+</html>

@@ -9,15 +9,209 @@ from rich.progress import BarColumn, Progress, SpinnerColumn, TextColumn, TimeRe
 from rich.table import Table
 
 from . import __version__
-from .core import convert_batch, convert_file
+from .core import convert_batch, convert_file, convert_to_hd
+from .optimizer import optimize_svg
 from .presets import list_presets
+from .webui import run_webui
 
 app = typer.Typer(
     name="comic2svg",
-    help="High-fidelity vectorizer (SVG) and preprocessing pipeline for vintage comics and picture books.",
+    help="High-fidelity vectorizer (SVG) and smart preprocessing pipeline for vintage comics and picture books.",
     add_completion=False,
 )
 console = Console()
+
+
+@app.command(name="webui")
+def webui_cmd(
+    host: str = typer.Option(
+        "127.0.0.1",
+        "--host",
+        "-h",
+        help="Host address to bind the studio web server.",
+    ),
+    port: int = typer.Option(
+        8080,
+        "--port",
+        "-p",
+        help="Port number for the studio web server.",
+    ),
+    no_browser: bool = typer.Option(
+        False,
+        "--no-browser",
+        help="Do not automatically launch the browser.",
+    ),
+):
+    """Launch the interactive comic2svg Studio in your browser."""
+    console.print(f"[bold cyan]Launching comic2svg Studio v{__version__}...[/bold cyan]")
+    run_webui(host=host, port=port, open_browser=not no_browser)
+
+
+@app.command(name="optimize")
+def optimize_cmd(
+    input_path: Path = typer.Argument(
+        ...,
+        help="Path to an SVG file or a directory containing SVG files to minify.",
+        exists=True,
+    ),
+    out: Optional[Path] = typer.Option(
+        None,
+        "--out",
+        "-o",
+        help="Destination path or directory. If omitted, optimizes in-place.",
+    ),
+    precision: int = typer.Option(
+        2,
+        "--precision",
+        help="Decimal precision for bezier coordinates (1 to 4).",
+    ),
+):
+    """Minify and compress SVG files (reduce size by 40%~60% without quality loss)."""
+    console.print(f"[bold cyan]comic2svg SVG Optimizer v{__version__}[/bold cyan]")
+
+    svg_files = []
+    if input_path.is_file():
+        svg_files = [input_path]
+    elif input_path.is_dir():
+        svg_files = list(input_path.glob("*.svg"))
+
+    if not svg_files:
+        console.print("[yellow]No SVG files found to optimize.[/yellow]")
+        return
+
+    table = Table(title="Optimization Results", header_style="bold magenta")
+    table.add_column("File", style="cyan")
+    table.add_column("Original", style="dim")
+    table.add_column("Optimized", style="green")
+    table.add_column("Saved", style="bold yellow")
+
+    total_orig = 0
+    total_opt = 0
+
+    for f in svg_files:
+        out_f = out / f.name if (out and out.is_dir()) else (out if (out and len(svg_files) == 1) else f)
+        res_p, stats = optimize_svg(f, out_f, precision=precision)
+        total_orig += stats.original_bytes
+        total_opt += stats.optimized_bytes
+
+        table.add_row(
+            f.name,
+            f"{stats.original_bytes / 1024:.1f} KB",
+            f"{stats.optimized_bytes / 1024:.1f} KB",
+            f"-{stats.savings_percent:.1f}%",
+        )
+
+    console.print(table)
+    overall_saved = ((total_orig - total_opt) / total_orig * 100) if total_orig > 0 else 0
+    console.print(
+        f"[bold green]✓ Done![/bold green] Total saved: [bold]{(total_orig - total_opt)/1024:.1f} KB[/bold] ({overall_saved:.1f}% reduction)"
+    )
+
+
+@app.command(name="hd")
+def hd_cmd(
+    input_path: Path = typer.Argument(
+        ...,
+        help="Path to an input PDF, image file (.png, .jpg, .webp), or folder of images.",
+        exists=True,
+    ),
+    out: Path = typer.Option(
+        Path("out_hd"),
+        "--out",
+        "-o",
+        help="Output directory for generated HD PNG files.",
+    ),
+    scale: float = typer.Option(
+        2.0,
+        "--scale",
+        "-s",
+        help="Super-resolution scaling factor (e.g. 2.0 for 2x, 4.0 for 4x).",
+    ),
+    dpi: int = typer.Option(
+        300,
+        "--dpi",
+        help="Rendering resolution (DPI) for PDF extraction.",
+    ),
+    pages: Optional[str] = typer.Option(
+        None,
+        "--pages",
+        help="Page range to convert for PDF files (e.g. '1-10', '1,3,5').",
+    ),
+    sharpen: bool = typer.Option(
+        True,
+        "--sharpen/--no-sharpen",
+        help="Apply line-edge unsharp masking to sharpen ink strokes.",
+    ),
+    flat_field: bool = typer.Option(
+        True,
+        "--flat-field/--no-flat-field",
+        help="Normalize background lighting to remove yellowing and shadows.",
+    ),
+    reconnect: bool = typer.Option(
+        True,
+        "--reconnect/--no-reconnect",
+        help="Reconnect micro-breaks in lines caused by age or degradation.",
+    ),
+    binarize: bool = typer.Option(
+        False,
+        "--binarize/--no-binarize",
+        help="Binarize output to pure black & white instead of enhanced grayscale.",
+    ),
+    workers: Optional[int] = typer.Option(
+        None,
+        "--workers",
+        "-w",
+        help="Number of parallel worker processes (default: CPU cores).",
+    ),
+):
+    """Step 1 & 2: Extract PDF to PNG and enhance to super-resolution HD line art."""
+    console.print(
+        f"[bold cyan]comic2svg HD Enhancer v{__version__}[/bold cyan] - Starting HD restoration"
+    )
+    console.print(f"[dim]Input:[/dim] {input_path}")
+    console.print(f"[dim]Output directory:[/dim] {out}")
+    console.print(f"[dim]Upscale:[/dim] [green]{scale}x (Lanczos-4)[/green]")
+    console.print(f"[dim]Sharpening:[/dim] {'Enabled' if sharpen else 'Disabled'}")
+    console.print(f"[dim]Flat-field normalization:[/dim] {'Enabled' if flat_field else 'Disabled'}")
+
+    out.mkdir(parents=True, exist_ok=True)
+
+    with Progress(
+        SpinnerColumn(),
+        TextColumn("[bold blue]{task.description}"),
+        BarColumn(),
+        TextColumn("[progress.percentage]{task.percentage:>3.0f}%"),
+        TextColumn("({task.completed}/{task.total})"),
+        TimeRemainingColumn(),
+        console=console,
+    ) as progress:
+        task_id = progress.add_task("Enhancing pages to HD...", total=1)
+
+        def on_progress(completed: int, total: int, current_name: str):
+            progress.update(
+                task_id,
+                total=total,
+                completed=completed,
+                description=f"[cyan]{current_name}[/cyan]",
+            )
+
+        results = convert_to_hd(
+            input_path=input_path,
+            output_dir=out,
+            scale=scale,
+            dpi=dpi,
+            page_range=pages,
+            sharpen=sharpen,
+            flat_field=flat_field,
+            reconnect=reconnect,
+            binarize=binarize,
+            workers=workers,
+            progress_callback=on_progress,
+        )
+
+    console.print(
+        f"\n[bold green]✓ HD Enhancement complete![/bold green] Generated [bold]{len(results)}[/bold] HD images in [underline]{out}[/underline]"
+    )
 
 
 @app.command(name="convert")
@@ -44,10 +238,32 @@ def convert_cmd(
         "--dpi",
         help="Rendering resolution (DPI) for PDF extraction.",
     ),
-    page_range: Optional[str] = typer.Option(
+    pages: Optional[str] = typer.Option(
         None,
         "--pages",
         help="Page range to convert for PDF files (e.g. '1-10', '1,3,5').",
+    ),
+    hd: bool = typer.Option(
+        False,
+        "--hd",
+        help="Enable HD super-resolution and line enhancement before vectorizing.",
+    ),
+    scale: float = typer.Option(
+        2.0,
+        "--scale",
+        "-s",
+        help="HD scaling factor if --hd is enabled (e.g. 2.0).",
+    ),
+    optimize: bool = typer.Option(
+        True,
+        "--optimize/--no-optimize",
+        "-O",
+        help="Automatically minify and compress the resulting SVG files (reduces size by 40-60%).",
+    ),
+    precision: int = typer.Option(
+        2,
+        "--precision",
+        help="Bezier coordinate decimal precision for optimization (default 2).",
     ),
     workers: Optional[int] = typer.Option(
         None,
@@ -68,6 +284,10 @@ def convert_cmd(
     console.print(f"[dim]Input:[/dim] {input_path}")
     console.print(f"[dim]Output directory:[/dim] {out}")
     console.print(f"[dim]Preset:[/dim] [green]{preset}[/green]")
+    if hd:
+        console.print(f"[dim]HD Pre-enhancement:[/dim] [green]Enabled ({scale}x)[/green]")
+    if optimize:
+        console.print(f"[dim]SVG Minification:[/dim] [green]Enabled (precision={precision})[/green]")
 
     out.mkdir(parents=True, exist_ok=True)
 
@@ -98,6 +318,10 @@ def convert_cmd(
                 dpi=dpi,
                 workers=workers,
                 keep_intermediate=keep_intermediate,
+                use_hd=hd,
+                hd_scale=scale,
+                optimize=optimize,
+                precision=precision,
                 progress_callback=on_progress,
             )
         else:
@@ -106,9 +330,13 @@ def convert_cmd(
                 out,
                 preset=preset,
                 dpi=dpi,
-                page_range=page_range,
+                page_range=pages,
                 workers=workers,
                 keep_intermediate=keep_intermediate,
+                use_hd=hd,
+                hd_scale=scale,
+                optimize=optimize,
+                precision=precision,
                 progress_callback=on_progress,
             )
 
