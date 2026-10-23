@@ -1,5 +1,6 @@
 import pytest
-from comic2svg.colorize import get_colorizer, PaletteColorizer
+
+from comic2svg.colorize import PaletteColorizer, get_colorizer
 
 
 def test_get_colorizer_palette():

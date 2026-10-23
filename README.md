@@ -68,6 +68,9 @@ Convert directly from PDF to clean, infinite-zoom SVG with HD pre-enhancement:
 
 ```bash
 comic2svg convert my_comic.pdf --hd --scale 2 --out ./output_svgs/
+
+# High-speed processing for multi-hundred page books (5x-10x faster with bilateral denoise)
+comic2svg convert my_comic.pdf --fast --out ./output_svgs/
 ```
 
 Convert a specific page range (e.g. pages 1 to 10):

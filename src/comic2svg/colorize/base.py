@@ -39,7 +39,7 @@ class PaletteColorizer(ColorizeEngine):
         # and seed-based flood fill with specified color palette
         raise NotImplementedError(
             "PaletteColorizer will be available in v0.2.0. "
-            "Track progress at https://github.com/jimou/comic2svg/issues"
+            "Track progress at https://github.com/jimou78/comic2svg/issues"
         )
 
 

@@ -6,7 +6,7 @@ modern crisp line drawings.
 """
 
 from dataclasses import dataclass
-from typing import Dict, List, Optional
+from typing import Dict, List
 
 
 @dataclass(frozen=True)
@@ -25,7 +25,7 @@ class PresetConfig:
     deskew: bool = False
 
     # Vectorization parameters
-    color_mode: str = "binary"  # "binary" or "color"
+    color_mode: str = "binary"
     filter_speckle: int = 4
     corner_threshold: int = 60
     length_threshold: float = 4.0
@@ -41,7 +41,7 @@ PRESETS: Dict[str, PresetConfig] = {
             "Applies adaptive thresholding to remove yellow backgrounds and ink bleed "
             "while retaining fragile line strokes."
         ),
-        denoise_h=12.0,
+        denoise_h=10.0,
         adaptive_block_size=35,
         adaptive_c=12.0,
         despeckle_size=5,
@@ -75,7 +75,7 @@ PRESETS: Dict[str, PresetConfig] = {
             "Optimized for heavy contrast prints, woodcut illustrations, and bold calligraphy. "
             "Emphasizes solid black fills and clean silhouette boundaries."
         ),
-        denoise_h=14.0,
+        denoise_h=12.0,
         adaptive_block_size=45,
         adaptive_c=15.0,
         despeckle_size=6,

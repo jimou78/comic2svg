@@ -42,7 +42,7 @@ def generate_flipbook(
     }}
     * {{ box-sizing: border-box; margin: 0; padding: 0; }}
     body {{ background: var(--bg); color: var(--text); height: 100vh; overflow: hidden; display: flex; flex-direction: column; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }}
-    
+
     header {{ height: 48px; background: var(--bar-bg); backdrop-filter: blur(8px); display: flex; align-items: center; justify-content: space-between; padding: 0 20px; border-bottom: 1px solid #1e293b; z-index: 10; }}
     header h1 {{ font-size: 1rem; font-weight: 600; color: var(--accent); }}
     .controls {{ display: flex; gap: 8px; align-items: center; }}
@@ -93,7 +93,7 @@ def generate_flipbook(
 """
 
     # Inject SVG elements safely
-    for idx, svg_text in enumerate(svg_data_list):
+    for svg_text in svg_data_list:
         # Escape backticks and backslashes
         escaped = svg_text.replace("\\", "\\\\").replace("`", "\\`").replace("${", "\\${")
         html_template += f"\n    svgStorage.push(`{escaped}`);"

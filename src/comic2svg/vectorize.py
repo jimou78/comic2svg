@@ -12,7 +12,7 @@ try:
 except ImportError:
     vtracer = None
 
-from .presets import PresetConfig
+from .presets import PresetConfig, get_preset
 
 
 def vectorize_image(
@@ -55,7 +55,6 @@ def vectorize_image(
         out_p.parent.mkdir(parents=True, exist_ok=True)
 
     if preset is None:
-        from .presets import get_preset
         preset = get_preset("vintage-comic")
 
     mode = color_mode or preset.color_mode

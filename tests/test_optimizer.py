@@ -1,4 +1,4 @@
-from comic2svg.optimizer import round_path_coordinates, optimize_svg_content, optimize_svg
+from comic2svg.optimizer import optimize_svg, optimize_svg_content, round_path_coordinates
 
 
 def test_round_path_coordinates():
@@ -42,3 +42,10 @@ def test_optimize_svg_file(tmp_path):
     assert out_file.exists()
     assert stats.saved_bytes > 0
     assert stats.savings_percent > 0
+
+
+def test_ensure_viewbox_injection():
+    raw_svg_no_viewbox = '<svg width="800px" height="1200px"><path d="M 0 0 L 10 10" /></svg>'
+    optimized = optimize_svg_content(raw_svg_no_viewbox)
+    assert 'viewBox="0 0 800 1200"' in optimized
+    assert 'xmlns="http://www.w3.org/2000/svg"' in optimized

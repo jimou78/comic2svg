@@ -1,11 +1,16 @@
 import numpy as np
-from comic2svg.enhance import upscale_image, unsharp_mask, reconnect_broken_strokes, flat_field_correction
 
-# Try importing cv2 for test execution
 try:
     import cv2
 except ImportError:
     cv2 = None
+
+from comic2svg.enhance import (
+    flat_field_correction,
+    reconnect_broken_strokes,
+    unsharp_mask,
+    upscale_image,
+)
 
 
 def test_upscale_image():

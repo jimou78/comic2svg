@@ -13,29 +13,25 @@ try:
 except ImportError:
     cv2 = None
 
-from .preprocess import read_image, write_image
+from .preprocess import denoise, read_image, write_image
 
 
 def flat_field_correction(img: np.ndarray, blur_radius: int = 51) -> np.ndarray:
     """Normalize uneven paper lighting, yellowing, and scanner shadow gradients.
 
-    Estimates the background illumination plane using a large morphological
-    or Gaussian blur, and normalizes the foreground against it.
+    Estimates the background illumination plane using a large Gaussian blur,
+    and normalizes the foreground against it.
     """
     if len(img.shape) == 3:
         gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
     else:
         gray = img.copy()
 
-    # Ensure radius is odd
     if blur_radius % 2 == 0:
         blur_radius += 1
 
-    # Estimate background illumination
     background = cv2.GaussianBlur(gray, (blur_radius, blur_radius), 0)
 
-    # Division normalization: img / background * 255
-    # Avoid zero division
     norm = np.clip(
         (gray.astype(np.float32) / (background.astype(np.float32) + 1e-5)) * 255.0,
         0,
@@ -72,7 +68,6 @@ def unsharp_mask(
 ) -> np.ndarray:
     """Sharpen faded, blurry ink edges without amplifying grain."""
     blurred = cv2.GaussianBlur(img, (0, 0), sigma)
-    # High-contrast difference
     diff = cv2.subtract(img, blurred)
     low_contrast_mask = np.abs(diff) < threshold
     sharpened = cv2.addWeighted(img, 1.0 + strength, blurred, -strength, 0)
@@ -82,16 +77,9 @@ def unsharp_mask(
 
 def reconnect_broken_strokes(img: np.ndarray, kernel_size: int = 2) -> np.ndarray:
     """Connect microscopic gaps in fragile or faded strokes caused by paper aging."""
-    # Assuming white background (255) and black ink (0)
-    # Invert so ink is foreground
     inverted = cv2.bitwise_not(img)
-
-    kernel = cv2.getStructuringElement(
-        cv2.MORPH_ELLIPSE, (kernel_size, kernel_size)
-    )
-    # Morphological closing (dilation followed by erosion) connects broken gaps
+    kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (kernel_size, kernel_size))
     closed = cv2.morphologyEx(inverted, cv2.MORPH_CLOSE, kernel)
-
     return cv2.bitwise_not(closed)
 
 
@@ -103,36 +91,13 @@ def enhance_to_hd(
     flat_field: bool = True,
     reconnect: bool = True,
     denoise_strength: float = 8.0,
-    despeckle_size: int = 4,
+    fast: bool = False,
     binarize: bool = False,
 ) -> Path:
     """Full High-Definition (HD) enhancement pipeline for a single page image.
 
-    Parameters
-    ----------
-    input_path : Union[str, Path]
-        Path to the source PNG or extracted image.
-    output_path : Optional[Union[str, Path]]
-        Destination path for the HD enhanced PNG.
-    scale : float
-        Super-resolution scale factor (e.g. 2.0 for 2x, 4.0 for 4x).
-    sharpen : bool
-        Whether to apply unsharp mask line sharpening.
-    flat_field : bool
-        Whether to eliminate paper lighting gradients and yellow casts.
-    reconnect : bool
-        Whether to reconnect micro-breaks in lines.
-    denoise_strength : float
-        Denoising filter strength.
-    despeckle_size : int
-        Minimum area for isolated speckle noise removal.
-    binarize : bool
-        Whether to output crisp binary (black & white) or enhanced grayscale.
-
-    Returns
-    -------
-    Path
-        Path to the generated HD PNG image.
+    Key Performance Optimization: Denoising and flat-field illumination correction
+    are performed on the original resolution BEFORE upscaling, saving 4x-16x compute!
     """
     if cv2 is None:
         raise ImportError(
@@ -147,27 +112,25 @@ def enhance_to_hd(
 
     img = read_image(in_p, grayscale=True)
 
-    # 1. Background flat-field illumination normalization
+    # 1. Background flat-field illumination normalization (on native resolution)
     if flat_field:
         img = flat_field_correction(img, blur_radius=51)
 
-    # 2. Super-resolution upscaling (Lanczos-4)
+    # 2. Denoising on native resolution BEFORE upscaling (saves 4x-16x compute!)
+    if denoise_strength > 0:
+        img = denoise(img, h=denoise_strength, fast=fast, search_window=11)
+
+    # 3. Broken stroke reconnection
+    if reconnect:
+        img = reconnect_broken_strokes(img, kernel_size=2)
+
+    # 4. Super-resolution upscaling (Lanczos-4)
     if scale > 1.0:
         img = upscale_image(img, scale=scale)
 
-    # 3. Denoising at HD scale
-    if denoise_strength > 0:
-        img = cv2.fastNlMeansDenoising(
-            img, None, h=float(denoise_strength), templateWindowSize=7, searchWindowSize=21
-        )
-
-    # 4. Line edge sharpening
+    # 5. Line edge sharpening (on HD scale)
     if sharpen:
         img = unsharp_mask(img, sigma=1.2, strength=1.6)
-
-    # 5. Broken stroke reconnection
-    if reconnect:
-        img = reconnect_broken_strokes(img, kernel_size=2)
 
     # 6. Optional final binarization or contrast enhancement
     if binarize:
@@ -180,7 +143,6 @@ def enhance_to_hd(
             12.0,
         )
     else:
-        # High-fidelity contrast stretch
         clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8))
         img = clahe.apply(img)
 

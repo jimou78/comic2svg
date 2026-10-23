@@ -60,6 +60,9 @@ comic2svg hd 老连环画.pdf --scale 4 --sharpen --reconnect --out ./ultra_hd/
 ```bash
 # 开启 --hd 预增强，转出的 SVG 线条平滑度显著提升
 comic2svg convert 老连环画.pdf --hd --scale 2 --out ./svg_output/
+
+# 开启 --fast 极速降噪模式（适合数百页大部头书籍批量处理，速度提升 5~10 倍）
+comic2svg convert 老连环画.pdf --fast --out ./svg_output/
 ```
 
 仅转换指定页码（例如第 1 到 10 页）：

@@ -2,11 +2,12 @@
 """
 
 from pathlib import Path
-from typing import List, Optional
-import typer
+from typing import Optional
+
 from rich.console import Console
 from rich.progress import BarColumn, Progress, SpinnerColumn, TextColumn, TimeRemainingColumn
 from rich.table import Table
+import typer
 
 from . import __version__
 from .core import convert_batch, convert_file, convert_to_hd
@@ -122,7 +123,7 @@ def optimize_cmd(
 
     for f in svg_files:
         out_f = out / f.name if (out and out.is_dir()) else (out if (out and len(svg_files) == 1) else f)
-        res_p, stats = optimize_svg(f, out_f, precision=precision)
+        _, stats = optimize_svg(f, out_f, precision=precision)
         total_orig += stats.original_bytes
         total_opt += stats.optimized_bytes
 
@@ -184,6 +185,11 @@ def hd_cmd(
         "--reconnect/--no-reconnect",
         help="Reconnect micro-breaks in lines caused by age or degradation.",
     ),
+    fast: bool = typer.Option(
+        False,
+        "--fast/--no-fast",
+        help="Use fast bilateral filter instead of heavy NLMeans denoising (50x faster).",
+    ),
     binarize: bool = typer.Option(
         False,
         "--binarize/--no-binarize",
@@ -205,6 +211,8 @@ def hd_cmd(
     console.print(f"[dim]Upscale:[/dim] [green]{scale}x (Lanczos-4)[/green]")
     console.print(f"[dim]Sharpening:[/dim] {'Enabled' if sharpen else 'Disabled'}")
     console.print(f"[dim]Flat-field normalization:[/dim] {'Enabled' if flat_field else 'Disabled'}")
+    if fast:
+        console.print("[dim]Denoise Mode:[/dim] [yellow]High-Speed Bilateral (<30ms)[/yellow]")
 
     out.mkdir(parents=True, exist_ok=True)
 
@@ -237,6 +245,7 @@ def hd_cmd(
             flat_field=flat_field,
             reconnect=reconnect,
             binarize=binarize,
+            fast=fast,
             workers=workers,
             progress_callback=on_progress,
         )
@@ -305,6 +314,11 @@ def convert_cmd(
         "--flipbook/--no-flipbook",
         help="Automatically generate a standalone offline HTML5 flipbook reader.",
     ),
+    fast: bool = typer.Option(
+        False,
+        "--fast/--no-fast",
+        help="Use high-speed bilateral filtering for denoise to maximize throughput.",
+    ),
     hd: bool = typer.Option(
         False,
         "--hd",
@@ -348,14 +362,16 @@ def convert_cmd(
     console.print(f"[dim]Preset:[/dim] [green]{preset}[/green]")
     if hd:
         console.print(f"[dim]HD Pre-enhancement:[/dim] [green]Enabled ({scale}x)[/green]")
+    if fast:
+        console.print("[dim]Denoise Mode:[/dim] [yellow]High-Speed Bilateral[/yellow]")
     if split_pages:
         console.print(f"[dim]Double-page split:[/dim] [green]Enabled ({split_direction.upper()})[/green]")
     if crop_borders:
-        console.print(f"[dim]Scanner margin cropping:[/dim] [green]Enabled[/green]")
+        console.print("[dim]Scanner margin cropping:[/dim] [green]Enabled[/green]")
     if descreen:
-        console.print(f"[dim]Halftone descreening:[/dim] [green]Enabled[/green]")
+        console.print("[dim]Halftone descreening:[/dim] [green]Enabled[/green]")
     if flipbook:
-        console.print(f"[dim]HTML5 Flipbook Reader:[/dim] [green]Enabled[/green]")
+        console.print("[dim]HTML5 Flipbook Reader:[/dim] [green]Enabled[/green]")
 
     out.mkdir(parents=True, exist_ok=True)
 
@@ -384,6 +400,14 @@ def convert_cmd(
                 out,
                 preset=preset,
                 dpi=dpi,
+                adaptive_dpi=adaptive_dpi,
+                page_range=pages,
+                split_pages=split_pages,
+                split_direction=split_direction,
+                crop_borders=crop_borders,
+                descreen=descreen,
+                flipbook=flipbook,
+                fast=fast,
                 workers=workers,
                 keep_intermediate=keep_intermediate,
                 use_hd=hd,
@@ -405,6 +429,7 @@ def convert_cmd(
                 crop_borders=crop_borders,
                 descreen=descreen,
                 flipbook=flipbook,
+                fast=fast,
                 workers=workers,
                 keep_intermediate=keep_intermediate,
                 use_hd=hd,

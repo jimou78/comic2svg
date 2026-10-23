@@ -1,6 +1,7 @@
 from typer.testing import CliRunner
-from comic2svg.cli import app
+
 from comic2svg import __version__
+from comic2svg.cli import app
 
 runner = CliRunner()
 

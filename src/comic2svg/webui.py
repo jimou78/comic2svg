@@ -5,14 +5,14 @@ real-time parameter tuning, and one-click SVG/HD-PNG export. Zero extra
 framework dependencies required.
 """
 
-import http.server
 import json
 import os
+from http.server import HTTPServer, SimpleHTTPRequestHandler
 from pathlib import Path
 import re
 import tempfile
-from typing import Dict, List, Optional
-import urllib.parse
+from typing import Dict, List
+from urllib.parse import urlparse
 import webbrowser
 
 from .enhance import enhance_to_hd
@@ -59,14 +59,14 @@ def parse_multipart_form(body_bytes: bytes, boundary: str) -> Dict[str, List[byt
     return fields
 
 
-class StudioRequestHandler(http.server.SimpleHTTPRequestHandler):
+class StudioRequestHandler(SimpleHTTPRequestHandler):
     """Custom request handler serving the studio interface and processing APIs."""
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, directory=str(STATIC_DIR), **kwargs)
 
     def do_GET(self):
-        parsed = urllib.parse.urlparse(self.path)
+        parsed = urlparse(self.path)
         if parsed.path in ["", "/", "/index.html"]:
             self.send_response(200)
             self.send_header("Content-Type", "text/html; charset=utf-8")
@@ -93,7 +93,7 @@ class StudioRequestHandler(http.server.SimpleHTTPRequestHandler):
         return super().do_GET()
 
     def do_POST(self):
-        parsed = urllib.parse.urlparse(self.path)
+        parsed = urlparse(self.path)
         if parsed.path == "/api/process":
             try:
                 self._handle_process_api()
@@ -192,13 +192,13 @@ class StudioRequestHandler(http.server.SimpleHTTPRequestHandler):
 def run_webui(host: str = "127.0.0.1", port: int = 8080, open_browser: bool = True):
     """Launch the interactive comic2svg Studio in the user's browser."""
     server_address = (host, port)
-    httpd = http.server.HTTPServer(server_address, StudioRequestHandler)
+    httpd = HTTPServer(server_address, StudioRequestHandler)
     url = f"http://{host}:{port}"
 
-    print(f"\n========================================================")
+    print("\n========================================================")
     print(f"🚀 comic2svg Studio is running at: {url}")
-    print(f"Press Ctrl+C to stop the server.")
-    print(f"========================================================\n")
+    print("Press Ctrl+C to stop the server.")
+    print("========================================================\n")
 
     if open_browser:
         webbrowser.open(url)

@@ -4,18 +4,18 @@ Combines PDF rendering, HD enhancement, image preprocessing, and vectorization
 into a seamless batch processing engine with multi-core parallelism.
 """
 
-from concurrent.futures import ProcessPoolExecutor, as_completed
 import os
+from concurrent.futures import ProcessPoolExecutor, as_completed
 from pathlib import Path
 from typing import Callable, List, Optional, Tuple, Union
 
-from .pdf import render_pdf_pages
-from .presets import PresetConfig, get_preset
-from .preprocess import clean_image
 from .enhance import enhance_to_hd
-from .vectorize import vectorize_image
-from .optimizer import optimize_svg
 from .flipbook import generate_flipbook
+from .optimizer import optimize_svg
+from .pdf import render_pdf_pages
+from .preprocess import clean_image
+from .presets import PresetConfig, get_preset
+from .vectorize import vectorize_image
 
 IMAGE_EXTENSIONS = {".png", ".jpg", ".jpeg", ".webp", ".bmp", ".tif", ".tiff"}
 
@@ -31,6 +31,7 @@ def _process_single_page(
     precision: int = 2,
     crop_borders: bool = False,
     descreen: bool = False,
+    fast: bool = False,
 ) -> Tuple[str, bool, str]:
     """Worker function for parallel page processing."""
     try:
@@ -49,12 +50,14 @@ def _process_single_page(
                 flat_field=True,
                 reconnect=True,
                 denoise_strength=preset.denoise_h,
+                fast=fast,
             )
             working_img = hd_p
         else:
             working_img = img_p
 
         # 2. Clean and binarize
+        # Crucial optimization: If HD already denoised and normalized, skip double-pass in clean_image!
         clean_p = working_img.with_suffix(".clean.png")
         clean_image(
             working_img,
@@ -62,23 +65,25 @@ def _process_single_page(
             preset=preset,
             crop_borders=crop_borders,
             descreen=descreen,
+            fast=fast,
+            skip_denoise=use_hd,
+            skip_contrast=use_hd,
         )
 
         # 3. Vectorize
         vectorize_image(clean_p, svg_p, preset=preset)
 
-        # 4. SVG Optimization / Minification
+        # 4. SVG Optimization / Minification & viewBox check
         if optimize and svg_p.exists():
             optimize_svg(svg_p, svg_p, precision=precision)
 
-        # 4. Clean up intermediate if not needed
+        # 5. Clean up intermediate if not needed
         if not keep_intermediate:
-            for intermediate in [clean_p]:
-                if intermediate.exists() and intermediate != img_p:
-                    try:
-                        intermediate.unlink()
-                    except OSError:
-                        pass
+            if clean_p.exists() and clean_p != img_p:
+                try:
+                    clean_p.unlink()
+                except OSError:
+                    pass
             if use_hd and working_img.exists() and working_img != img_p:
                 try:
                     working_img.unlink()
@@ -98,6 +103,7 @@ def _process_hd_only_page(
     flat_field: bool,
     reconnect: bool,
     binarize: bool,
+    fast: bool = False,
 ) -> Tuple[str, bool, str]:
     """Worker function for PDF -> PNG -> HD PNG enhancement without SVG conversion."""
     try:
@@ -112,6 +118,7 @@ def _process_hd_only_page(
             flat_field=flat_field,
             reconnect=reconnect,
             binarize=binarize,
+            fast=fast,
         )
         return (str(out_p), True, "")
     except Exception as exc:
@@ -128,6 +135,7 @@ def convert_to_hd(
     flat_field: bool = True,
     reconnect: bool = True,
     binarize: bool = False,
+    fast: bool = False,
     workers: Optional[int] = None,
     progress_callback: Optional[Callable[[int, int, str], None]] = None,
 ) -> List[Path]:
@@ -136,8 +144,6 @@ def convert_to_hd(
     1. Extract PDF pages to PNG (or take existing images).
     2. Enhance each page to high-definition (HD) with super-resolution,
        background flattening, and line sharpening.
-
-    Returns list of HD PNG paths.
     """
     in_file = Path(input_path).resolve()
     out_dir = Path(output_dir).resolve()
@@ -146,7 +152,6 @@ def convert_to_hd(
     if not in_file.exists():
         raise FileNotFoundError(f"Input file not found: {in_file}")
 
-    # Step 1: PDF to PNG
     if in_file.suffix.lower() == ".pdf":
         raw_pages_dir = out_dir / f"_{in_file.stem}_raw_pages"
         raw_pages_dir.mkdir(parents=True, exist_ok=True)
@@ -172,7 +177,6 @@ def convert_to_hd(
     else:
         raise ValueError(f"Unsupported file format: {in_file.suffix}")
 
-    # Step 2: PNG to HD
     total = len(task_list)
     if total == 0:
         return []
@@ -184,7 +188,7 @@ def convert_to_hd(
     if num_workers <= 1 or total == 1:
         for in_str, out_str in task_list:
             res_path, ok, err = _process_hd_only_page(
-                in_str, out_str, scale, sharpen, flat_field, reconnect, binarize
+                in_str, out_str, scale, sharpen, flat_field, reconnect, binarize, fast=fast
             )
             completed += 1
             if ok:
@@ -206,6 +210,7 @@ def convert_to_hd(
                 flat_field,
                 reconnect,
                 binarize,
+                fast,
             ): in_str
             for in_str, out_str in task_list
         }
@@ -240,6 +245,7 @@ def convert_file(
     crop_borders: bool = False,
     descreen: bool = False,
     flipbook: bool = False,
+    fast: bool = False,
     workers: Optional[int] = None,
     keep_intermediate: bool = False,
     use_hd: bool = False,
@@ -301,6 +307,7 @@ def convert_file(
         precision=precision,
         crop_borders=crop_borders,
         descreen=descreen,
+        fast=fast,
         progress_callback=progress_callback,
     )
 
@@ -316,6 +323,14 @@ def convert_batch(
     output_dir: Union[str, Path],
     preset: Optional[Union[str, PresetConfig]] = None,
     dpi: int = 300,
+    adaptive_dpi: bool = True,
+    page_range: Optional[str] = None,
+    split_pages: bool = False,
+    split_direction: str = "ltr",
+    crop_borders: bool = False,
+    descreen: bool = False,
+    flipbook: bool = False,
+    fast: bool = False,
     workers: Optional[int] = None,
     keep_intermediate: bool = False,
     use_hd: bool = False,
@@ -324,7 +339,7 @@ def convert_batch(
     precision: int = 2,
     progress_callback: Optional[Callable[[int, int, str], None]] = None,
 ) -> List[Path]:
-    """Convert multiple files or directories of images/PDFs."""
+    """Convert multiple files or directories of images/PDFs with full parameter forwarding."""
     out_dir = Path(output_dir).resolve()
     out_dir.mkdir(parents=True, exist_ok=True)
 
@@ -342,6 +357,14 @@ def convert_batch(
                     out_dir,
                     preset=preset,
                     dpi=dpi,
+                    adaptive_dpi=adaptive_dpi,
+                    page_range=page_range,
+                    split_pages=split_pages,
+                    split_direction=split_direction,
+                    crop_borders=crop_borders,
+                    descreen=descreen,
+                    flipbook=False,  # Single combined flipbook generated at batch level
+                    fast=fast,
                     workers=workers,
                     keep_intermediate=keep_intermediate,
                     use_hd=use_hd,
@@ -357,13 +380,27 @@ def convert_batch(
                 out_dir,
                 preset=preset,
                 dpi=dpi,
+                adaptive_dpi=adaptive_dpi,
+                page_range=page_range,
+                split_pages=split_pages,
+                split_direction=split_direction,
+                crop_borders=crop_borders,
+                descreen=descreen,
+                flipbook=False,
+                fast=fast,
                 workers=workers,
                 keep_intermediate=keep_intermediate,
                 use_hd=use_hd,
                 hd_scale=hd_scale,
+                optimize=optimize,
+                precision=precision,
                 progress_callback=progress_callback,
             )
             all_generated.extend(results)
+
+    if flipbook and all_generated:
+        batch_flipbook_path = out_dir / "collection_flipbook.html"
+        generate_flipbook(all_generated, batch_flipbook_path, title="Comic Collection")
 
     return all_generated
 
@@ -379,6 +416,7 @@ def _run_parallel_tasks(
     precision: int = 2,
     crop_borders: bool = False,
     descreen: bool = False,
+    fast: bool = False,
     progress_callback: Optional[Callable[[int, int, str], None]] = None,
 ) -> List[Path]:
     total = len(tasks)
@@ -396,12 +434,13 @@ def _run_parallel_tasks(
                 out_str,
                 preset_name,
                 keep_intermediate,
-                use_hd,
-                hd_scale,
-                optimize,
-                precision,
+                use_hd=use_hd,
+                hd_scale=hd_scale,
+                optimize=optimize,
+                precision=precision,
                 crop_borders=crop_borders,
                 descreen=descreen,
+                fast=fast,
             )
             completed += 1
             if ok:
@@ -424,8 +463,9 @@ def _run_parallel_tasks(
                 hd_scale,
                 optimize,
                 precision,
-                crop_borders=crop_borders,
-                descreen=descreen,
+                crop_borders,
+                descreen,
+                fast,
             ): in_str
             for in_str, out_str in tasks
         }

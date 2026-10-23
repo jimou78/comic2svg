@@ -1,5 +1,6 @@
 import pytest
-from comic2svg.presets import PresetConfig, get_preset, list_presets, PRESETS
+
+from comic2svg.presets import PresetConfig, get_preset, list_presets
 
 
 def test_list_presets():
